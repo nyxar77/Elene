@@ -1,0 +1,41 @@
+name: ci
+
+"on":
+  pull_request:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: setup nix
+        uses: cachix/install-nix-action@v31
+
+      - name: check whitespace
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git diff --check \
+              "${{ github.event.pull_request.base.sha }}" \
+              "${{ github.event.pull_request.head.sha }}"
+          else
+            git diff-tree --check --no-commit-id -r "$GITHUB_SHA"
+          fi
+
+      - name: check
+        run: |
+          nix run .#check
+          nix flake check --accept-flake-config
