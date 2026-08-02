@@ -1,0 +1,6 @@
+.cache/
+.go/
+/elene
+result
+web/dist/
+web/node_modules/
