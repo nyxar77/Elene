@@ -43,11 +43,12 @@ Before every push, run:
 
 ```bash
 nix run .#check
+nix flake check --accept-flake-config
 ```
 
-That command requires clean formatting, whitespace checks, `go vet`,
-`staticcheck`, workflow linting, race-enabled tests, and a production build.
-Pull requests run both `nix run .#check` and `nix flake check` in CI.
+The checks require clean Go and Nix formatting, whitespace checks, Go and Nix
+static analysis, workflow linting, race-enabled tests, and a production build.
+Pull requests run the same gate in CI.
 
 ## Current scope
 

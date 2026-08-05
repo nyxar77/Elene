@@ -12,4 +12,6 @@ nix run .#elene -- devices
 ```
 
 See [the project charter](docs/PROJECT_CHARTER.md) and
-[development rules](docs/DEVELOPMENT.md).
+[development rules](docs/DEVELOPMENT.md). Repository protection and merge
+requirements are documented in the
+[repository policy](docs/REPOSITORY_POLICY.md).
