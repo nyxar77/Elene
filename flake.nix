@@ -19,11 +19,14 @@
           runtimeInputs = with pkgs; [
             actionlint
             coreutils
+            deadnix
             findutils
             gcc
             git
             go
             go-tools
+            nixfmt
+            statix
           ];
           text = ''
             set -eu
@@ -42,11 +45,14 @@
             fi
 
             git diff --check
-            actionlint
+            nixfmt --check flake.nix
+            deadnix --fail flake.nix
+            statix check flake.nix
+            actionlint .github/workflows/*.yml
             go vet ./...
             staticcheck ./...
-            go test -race ./...
-            go build -o "$temp_dir/elene" ./cmd/elene
+            go test -race -shuffle=on -count=1 -timeout=2m ./...
+            go build -trimpath -o "$temp_dir/elene" ./cmd/elene
           '';
         };
       mkApp = description: program: {
@@ -84,62 +90,62 @@
           default = mkApp "Run Elene" "${self.packages.${system}.default}/bin/elene";
           elene = mkApp "Run Elene" "${self.packages.${system}.default}/bin/elene";
           check = mkApp "Run Elene's full quality gate" "${qualityCommand pkgs}/bin/elene-check";
-          test = mkApp "Run Elene's race-enabled tests" (
-            "${
-              pkgs.writeShellApplication {
-                name = "elene-test";
-                runtimeInputs = [
-                  pkgs.gcc
-                  pkgs.go
-                ];
-                text = ''
-                  cache_dir="$(mktemp -d)"
-                  export GOCACHE="$cache_dir"
-                  trap 'rm -rf "$cache_dir"' EXIT
-                  go test -race ./...
-                '';
-              }
-            }/bin/elene-test"
-          );
-          fmt = mkApp "Format Elene's Go and Nix files" (
-            "${
-              pkgs.writeShellApplication {
-                name = "elene-fmt";
-                runtimeInputs = with pkgs; [
-                  findutils
-                  go
-                  nixfmt
-                ];
-                text = ''
-                  find . -name '*.go' -type f -print0 | xargs -0 -r gofmt -w
-                  nixfmt flake.nix
-                '';
-              }
-            }/bin/elene-fmt"
-          );
-          lint = mkApp "Run Elene's static analysis" (
-            "${
-              pkgs.writeShellApplication {
-                name = "elene-lint";
-                runtimeInputs = with pkgs; [
-                  git
-                  go
-                  go-tools
-                  gcc
-                  actionlint
-                ];
-                text = ''
-                  cache_dir="$(mktemp -d)"
-                  export GOCACHE="$cache_dir"
-                  trap 'rm -rf "$cache_dir"' EXIT
-                  git diff --check
-                  actionlint
-                  go vet ./...
-                  staticcheck ./...
-                '';
-              }
-            }/bin/elene-lint"
-          );
+          test = mkApp "Run Elene's race-enabled tests" "${
+            pkgs.writeShellApplication {
+              name = "elene-test";
+              runtimeInputs = [
+                pkgs.gcc
+                pkgs.go
+              ];
+              text = ''
+                cache_dir="$(mktemp -d)"
+                export GOCACHE="$cache_dir"
+                trap 'rm -rf "$cache_dir"' EXIT
+                go test -race -shuffle=on -count=1 -timeout=2m ./...
+              '';
+            }
+          }/bin/elene-test";
+          fmt = mkApp "Format Elene's Go and Nix files" "${
+            pkgs.writeShellApplication {
+              name = "elene-fmt";
+              runtimeInputs = with pkgs; [
+                findutils
+                go
+                nixfmt
+              ];
+              text = ''
+                find . -name '*.go' -type f -print0 | xargs -0 -r gofmt -w
+                nixfmt flake.nix
+              '';
+            }
+          }/bin/elene-fmt";
+          lint = mkApp "Run Elene's static analysis" "${
+            pkgs.writeShellApplication {
+              name = "elene-lint";
+              runtimeInputs = with pkgs; [
+                actionlint
+                deadnix
+                gcc
+                git
+                go
+                go-tools
+                nixfmt
+                statix
+              ];
+              text = ''
+                cache_dir="$(mktemp -d)"
+                export GOCACHE="$cache_dir"
+                trap 'rm -rf "$cache_dir"' EXIT
+                git diff --check
+                nixfmt --check flake.nix
+                deadnix --fail flake.nix
+                statix check flake.nix
+                actionlint .github/workflows/*.yml
+                go vet ./...
+                staticcheck ./...
+              '';
+            }
+          }/bin/elene-lint";
         }
       );
 
@@ -154,8 +160,12 @@
             version = "0.0.0";
             src = ./.;
             nativeBuildInputs = with pkgs; [
+              actionlint
+              deadnix
               go
               go-tools
+              nixfmt
+              statix
             ];
             dontConfigure = true;
             buildPhase = ''
@@ -166,10 +176,14 @@
 
               unformatted="$(find . -name '*.go' -type f -exec gofmt -l {} +)"
               test -z "$unformatted"
+              nixfmt --check flake.nix
+              deadnix --fail flake.nix
+              statix check flake.nix
+              actionlint .github/workflows/*.yml
               go vet ./...
               staticcheck ./...
-              go test -race ./...
-              go build -o "$TMPDIR/elene" ./cmd/elene
+              go test -race -shuffle=on -count=1 -timeout=2m ./...
+              go build -trimpath -o "$TMPDIR/elene" ./cmd/elene
               runHook postBuild
             '';
             installPhase = ''
@@ -187,13 +201,15 @@
           packages = with pkgs; [
             android-tools
             actionlint
+            deadnix
             gcc
             go
+            go-tools
             gopls
             nodejs
             nixfmt
             sqlite
-            go-tools
+            statix
           ];
         };
       });

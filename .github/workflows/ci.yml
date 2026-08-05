@@ -1,6 +1,7 @@
 name: ci
 
 "on":
+  merge_group:
   pull_request:
   push:
     branches:
@@ -9,33 +10,68 @@ name: ci
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   quality:
-    runs-on: ubuntu-latest
+    name: quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
 
     steps:
       - name: checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: setup nix
-        uses: cachix/install-nix-action@v31
+        uses: cachix/install-nix-action@630ae543ea3a38a9a4166f03376c02c50f408342 # v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: check whitespace
+      - name: check patch whitespace
         shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          MERGE_BASE_SHA: ${{ github.event.merge_group.base_sha }}
+          MERGE_HEAD_SHA: ${{ github.event.merge_group.head_sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
         run: |
           set -euo pipefail
 
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            git diff --check \
-              "${{ github.event.pull_request.base.sha }}" \
-              "${{ github.event.pull_request.head.sha }}"
-          else
-            git diff-tree --check --no-commit-id -r "$GITHUB_SHA"
-          fi
+          case "$EVENT_NAME" in
+            pull_request)
+              git diff --check "$PR_BASE_SHA...$PR_HEAD_SHA"
+              ;;
+            merge_group)
+              git diff --check "$MERGE_BASE_SHA...$MERGE_HEAD_SHA"
+              ;;
+            push)
+              if [[ "$PUSH_BEFORE_SHA" =~ ^0+$ ]]; then
+                git diff-tree --check --root --no-commit-id -r "$GITHUB_SHA"
+              else
+                git diff --check "$PUSH_BEFORE_SHA" "$GITHUB_SHA"
+              fi
+              ;;
+            *)
+              printf 'unsupported event: %s\n' "$EVENT_NAME" >&2
+              exit 1
+              ;;
+          esac
 
-      - name: check
-        run: |
-          nix run .#check
-          nix flake check --accept-flake-config
+      - name: review dependency changes
+        if: github.event_name == 'pull_request'
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: moderate
+
+      - name: run project checks
+        run: nix run .#check
+
+      - name: run flake checks
+        run: nix flake check --accept-flake-config
