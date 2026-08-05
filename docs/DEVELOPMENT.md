@@ -17,9 +17,12 @@ nix run .#check
 nix run .#elene -- devices
 ```
 
-`nix run .#check` is the required pre-push command. CI runs that command and
-then `nix flake check`, which rebuilds the package and Go checks in a clean
-environment.
+Run both checks before every push. CI repeats them in a clean environment:
+
+```bash
+nix run .#check
+nix flake check --accept-flake-config
+```
 
 ## Branches
 
@@ -35,6 +38,10 @@ environment.
 | `test/*` | Test-only work |
 | `perf/*` | Measured performance work |
 | `spike/*` | Disposable experiments |
+
+Open a pull request into `master`; direct pushes are blocked. See the
+[repository policy](REPOSITORY_POLICY.md) for the required checks and merge
+rules.
 
 ## Commits
 
