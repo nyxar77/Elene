@@ -25,6 +25,7 @@
             git
             go
             go-tools
+            govulncheck
             nixfmt
             statix
           ];
@@ -51,6 +52,7 @@
             actionlint .github/workflows/*.yml
             go vet ./...
             staticcheck ./...
+            govulncheck ./...
             go test -race -shuffle=on -count=1 -timeout=2m ./...
             go build -trimpath -o "$temp_dir/elene" ./cmd/elene
           '';
@@ -129,6 +131,7 @@
                 git
                 go
                 go-tools
+                govulncheck
                 nixfmt
                 statix
               ];
@@ -143,6 +146,7 @@
                 actionlint .github/workflows/*.yml
                 go vet ./...
                 staticcheck ./...
+                govulncheck ./...
               '';
             }
           }/bin/elene-lint";
@@ -205,6 +209,7 @@
             gcc
             go
             go-tools
+            govulncheck
             gopls
             nodejs
             nixfmt
