@@ -5,3 +5,5 @@ result
 web/dist/
 web/node_modules/
 .direnv/
+
+web/*.tsbuildinfo

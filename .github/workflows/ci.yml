@@ -70,6 +70,11 @@ jobs:
         with:
           fail-on-severity: moderate
 
+      - name: check frontend
+        run: |
+          nix develop --command sh -c 'cd web && bun install --frozen-lockfile && bun run check && bun run test && bun run build'
+          git diff --exit-code -- internal/dashboard/assets/dist
+
       - name: run project checks
         run: nix run .#check
 

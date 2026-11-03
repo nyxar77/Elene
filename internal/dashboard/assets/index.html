@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en" data-theme="{{.Preferences.Theme}}" data-accent="{{.Preferences.Accent}}" data-contrast="{{.Preferences.Contrast}}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Elene · Android applications</title>
+  <link rel="icon" type="image/svg+xml" href="/logo.svg">
+  <link rel="alternate icon" href="/favicon.ico">
+  <link rel="stylesheet" href="/themes.css">
+  <link rel="stylesheet" href="/dist/app.css">
+  {{if eq .Preferences.Interface "enhanced"}}<script type="module" src="/dist/app.js"></script>{{end}}
+</head>
+<body><div id="root">
+<header class="app-header"><div class="header-inner">
+  <a class="brand" href="/"><span class="brand-mark" aria-hidden="true" style="color:var(--accent);display:inline-grid;place-items:center;line-height:0;"><svg width="28" height="28" viewBox="0 0 200 200"><defs><mask id="m" maskUnits="userSpaceOnUse" x="0" y="0" width="200" height="200"><rect width="200" height="200" fill="#fff"/><rect x="76" y="88" width="11" height="52" rx="3" fill="#000"/><rect x="76" y="88" width="48" height="11" rx="3" fill="#000"/><rect x="76" y="129" width="48" height="11" rx="3" fill="#000"/><rect x="76" y="108.5" width="30" height="11" rx="3" fill="#000"/><circle cx="116" cy="114" r="8" fill="#000"/></mask></defs><path mask="url(#m)" fill="currentColor" d="M30 150V130A70 70 0 0 1 170 130V150Q170 160 160 160H40Q30 160 30 150Z"/><g stroke="currentColor" stroke-width="8" stroke-linecap="round" fill="none"><line x1="68" y1="58" x2="50" y2="26"/><line x1="132" y1="58" x2="150" y2="26"/></g></svg></span>Elene</a>
+  <nav aria-label="Main navigation">
+    <a {{if eq .Path "/"}}class="active" aria-current="page"{{end}} href="/?device={{.Selected}}&amp;source={{.Source}}">Home</a>
+    <a {{if eq .Path "/installed"}}class="active" aria-current="page"{{end}} href="/installed?device={{.Selected}}&amp;source={{.Source}}">Installed apps</a>
+    <a {{if eq .Path "/updates"}}class="active" aria-current="page"{{end}} href="/updates?device={{.Selected}}&amp;source={{.Source}}">Updates</a>
+    <a {{if eq .Path "/activity"}}class="active" aria-current="page"{{end}} href="/activity?device={{.Selected}}&amp;source={{.Source}}">Activity</a>
+    <a {{if eq .Path "/settings"}}class="active" aria-current="page"{{end}} href="/settings?device={{.Selected}}&amp;source={{.Source}}">Settings</a>
+  </nav>
+  <div class="source-picker"><select class="select-trigger" name="source" form="workspace-form" aria-label="Application source">
+    <option value="local" {{if eq .Source "local"}}selected{{end}}>Local APKs</option>
+    <option value="fdroid" {{if eq .Source "fdroid"}}selected{{end}}>F-Droid</option>
+    <option value="aurora" {{if eq .Source "aurora"}}selected{{end}}>IzzyOnDroid / Aurora</option>
+  </select></div>
+</div></header>
+<div class="workspace-toolbar"><form class="toolbar-inner" id="workspace-form" action="{{.Path}}" method="get">
+  <span class="breadcrumb">Workspace / {{.Source}}</span>
+  <div class="toolbar-actions"><select class="select-trigger" name="device" aria-label="Selected device">
+    <option value="">Select a device</option>
+    {{range .Devices}}<option value="{{.Serial}}" {{if eq .Serial $.Selected}}selected{{end}} {{if ne .State "online"}}disabled{{end}}>{{if .Model}}{{.Model}}{{else}}{{.Serial}}{{end}} · {{.State}}</option>{{end}}
+  </select><button class="button secondary" type="submit">Apply / refresh</button><a class="button primary" href="/?device={{.Selected}}#install">Install APK</a></div>
+</form></div>
+<main class="app-main">
+{{if .Error}}<div class="error-message" role="alert">{{.Error}}</div>{{end}}
+{{if eq .Path "/"}}
+  <div class="page-heading"><div><h1>{{if eq .Source "local"}}Home{{else if eq .Source "fdroid"}}F-Droid{{else}}IzzyOnDroid / Aurora{{end}}</h1><p>Manage Android applications from your computer.</p></div><span class="pill">{{if eq .Preferences.Interface "basic"}}No JavaScript{{else}}Local workspace{{end}}</span></div>
+  {{if or (eq .Source "fdroid") (eq .Source "aurora")}}
+  <form class="catalog-toolbar" action="/" method="get"><input type="hidden" name="source" value="{{.Source}}"><input type="hidden" name="device" value="{{.Selected}}"><label class="search-box"><span class="sr-only">Search apps</span><input name="q" value="{{.Query}}" maxlength="120" placeholder="Search apps"><button class="button secondary" type="submit">Search</button></label><select class="select-trigger" name="category" aria-label="Category"><option value="">All categories</option>{{range .Catalog.Categories}}<option value="{{.}}" {{if eq . $.Category}}selected{{end}}>{{.}}</option>{{end}}</select></form>
+  {{with .Catalog}}<div class="section-title"><h2>{{if $.Query}}Search results{{else}}Recently updated{{end}}</h2><span>{{.Total}} apps</span></div><div class="app-grid">{{range .Apps}}<div class="application-card catalog-card"><div class="application-icon">{{if .Icon}}<img loading="lazy" src="/api/catalog/icon?path={{.Icon}}&amp;source={{$.Source}}" alt="">{{else}}App{{end}}</div><div><h2>{{.Name}}</h2><p>{{.Summary}}</p><div class="catalog-card-meta"><span>{{.ID}}</span>{{if .VersionName}}<span> · v{{.VersionName}}</span>{{end}} <a href="{{.URL}}" target="_blank" rel="noopener noreferrer" class="muted" title="View listing">Listing</a></div>{{if $.Selected}}<form action="/install-remote" method="post" style="margin-top:10px"><input type="hidden" name="token" value="{{$.Token}}"><input type="hidden" name="serial" value="{{$.Selected}}"><input type="hidden" name="source" value="{{$.Source}}"><input type="hidden" name="package" value="{{.ID}}"><button type="submit" class="button primary small-button">{{if $.Busy}}Queue installation{{else}}Install to device{{end}}</button></form>{{else}}<p class="muted small" style="margin-top:8px">Select a device above to install</p>{{end}}</div></div>{{else}}<div class="empty-state"><h2>No apps found</h2><p>Try another search or category.</p></div>{{end}}</div>{{if gt .Pages 1}}<nav class="catalog-pagination" aria-label="Catalog pages">{{if .Prev}}<a class="button secondary" href="/?source={{$.Source}}&amp;q={{$.Query}}&amp;category={{$.Category}}&amp;page={{.Prev}}">Previous</a>{{end}}<span>Page {{.Page}} of {{.Pages}}</span>{{if .Next}}<a class="button secondary" href="/?source={{$.Source}}&amp;q={{$.Query}}&amp;category={{$.Category}}&amp;page={{.Next}}">Next</a>{{end}}</nav>{{end}}{{end}}
+  <p class="muted small">Packages are downloaded securely from verified repository mirrors and checked with SHA-256 before installation via ADB.</p>
+  {{else}}
+  <div class="section-title"><h2>Connected devices</h2><span>{{len .Devices}} detected</span></div>
+  <div class="device-grid">{{range .Devices}}<div class="device-card {{if eq .Serial $.Selected}}selected{{end}}"><span class="device-icon" aria-hidden="true">▣</span><span><strong>{{if .Model}}{{.Model}}{{else}}Android device{{end}}</strong><small>{{.Serial}}</small><small>{{if eq .State "unauthorized"}}Accept the debugging prompt on your device.{{else if eq .State "offline"}}Reconnect your device and try again.{{else}}Ready to use{{end}}</small></span><span class="pill">{{.State}}</span></div>{{else}}<section class="panel"><div class="empty-state"><h2>No devices connected</h2><p>Connect with USB, enable USB debugging, and allow this computer on your device.</p></div></section>{{end}}</div>
+  <div class="section-title" id="install"><h2>Install an APK</h2></div>
+  <section class="panel settings-panel"><div class="settings-section-heading"><h2>Install from your files</h2><p>Choose a connected device and a single APK. Existing applications are updated in place.</p></div>
+  <form action="/install" method="post" enctype="multipart/form-data" class="settings-fields">
+    <input type="hidden" name="token" value="{{.Token}}">
+    <label>Device<select class="select-trigger" name="serial" required><option value="">Choose a device</option>{{range .Devices}}<option value="{{.Serial}}" {{if eq .Serial $.Selected}}selected{{end}} {{if ne .State "online"}}disabled{{end}}>{{.Model}} · {{.Serial}}</option>{{end}}</select></label>
+    <label class="file-picker"><strong>Choose an APK file</strong><span>Single APK · Maximum 512 MiB</span><input name="apk" type="file" accept=".apk" required></label>
+    <button type="submit" class="button primary" {{if .Busy}}disabled{{end}}>{{if .Busy}}Installation in progress{{else}}Install application{{end}}</button>
+  </form></section>{{end}}
+{{else if eq .Path "/installed"}}
+  <div class="page-heading"><div><h1>Installed apps</h1><p>Third-party applications on your selected device.</p></div></div>
+  {{if .Selected}}<div class="app-grid">{{range .Packages}}<article class="application-card"><div class="application-icon" aria-hidden="true">▦</div><div><h2>{{.ID}}</h2><p>Android package</p><span class="pill">Installed</span></div></article>{{else}}<div class="empty-state"><h2>No applications found</h2><p>No third-party packages were returned by the device.</p></div>{{end}}</div>{{else}}<section class="panel"><div class="empty-state"><h2>Select a connected device</h2><p>Choose a device above and press Apply / refresh.</p></div></section>{{end}}
+{{else if eq .Path "/updates"}}
+  <div class="page-heading"><div><h1>Updates</h1><p>Manage updates for your applications.</p></div></div><section class="panel"><div class="empty-state"><h2>Automatic update checks are not available yet</h2><p>Source tracking and version comparison are not implemented. Use Install APK with a newer compatible version signed by the same developer.</p></div></section>
+{{else if eq .Path "/activity"}}
+  <div class="page-heading"><div><h1>Activity</h1><p>Installation results for this daemon session. Refresh to see changes.</p></div></div>
+  <section class="panel"><div class="job-list">{{range .Jobs}}<article class="job-row"><div class="application-icon" aria-hidden="true">▦</div><div class="job-description"><h2>{{.Name}}</h2><p>{{.Serial}} · {{.Created.Format "15:04"}}</p>{{if .Error}}<p class="error-text">{{.Error}}</p>{{end}}</div><span class="job-status {{.State}}">{{.State}}</span></article>{{else}}<div class="empty-state"><h2>No activity yet</h2><p>Install an APK to see its progress and result here.</p></div>{{end}}</div></section>
+  <p class="muted small">The latest 20 jobs are kept until the daemon stops.</p>
+{{else if eq .Path "/settings"}}
+  <div class="page-heading"><div><h1>Settings</h1><p>Appearance and local interface preferences.</p></div></div>
+  <form action="/preferences" method="post"><input type="hidden" name="token" value="{{.Token}}">
+    <section class="panel settings-panel"><div class="settings-section-heading"><h2>Appearance</h2><p>Choose a color scheme for every page.</p></div><div class="settings-fields">
+      <label>Color scheme<select class="select-trigger" name="theme">{{range .Themes}}<option value="{{.Value}}" {{if eq $.Preferences.Theme .Value}}selected{{end}}>{{.Label}}</option>{{end}}</select></label>
+      {{if or (eq .Preferences.Theme "latte") (eq .Preferences.Theme "frappe") (eq .Preferences.Theme "macchiato") (eq .Preferences.Theme "mocha")}}<label>Accent<select class="select-trigger" name="accent">{{range .Accents}}<option value="{{.}}" {{if eq $.Preferences.Accent .}}selected{{end}}>{{.}}</option>{{end}}</select></label>{{else}}<input type="hidden" name="accent" value="{{.Preferences.Accent}}">{{end}}
+      {{if or (eq .Preferences.Theme "gruvbox-light") (eq .Preferences.Theme "gruvbox-dark")}}<label>Contrast<select class="select-trigger" name="contrast"><option value="soft" {{if eq .Preferences.Contrast "soft"}}selected{{end}}>Soft</option><option value="medium" {{if eq .Preferences.Contrast "medium"}}selected{{end}}>Medium</option><option value="hard" {{if eq .Preferences.Contrast "hard"}}selected{{end}}>Hard</option></select></label>{{else}}<input type="hidden" name="contrast" value="{{.Preferences.Contrast}}">{{end}}
+    </div></section>
+    <section class="panel settings-panel"><div class="settings-section-heading"><h2>Interface</h2><p>Both modes work through the local daemon.</p></div><div class="settings-fields"><label>JavaScript<select class="select-trigger" name="interface"><option value="enhanced" {{if eq .Preferences.Interface "enhanced"}}selected{{end}}>Enabled · automatic refresh</option><option value="basic" {{if eq .Preferences.Interface "basic"}}selected{{end}}>Disabled · server-rendered pages</option></select><small>No-JavaScript mode retains navigation, themes, uploads, and device management.</small></label></div></section>
+    <div class="settings-actions"><span class="muted small">Changes apply after saving.</span><button type="submit" class="button primary">Save preferences</button></div>
+  </form>
+{{end}}
+</main>
+<footer class="app-footer"><span>Elene · On this computer</span><span>Refresh manually to see changes</span></footer>
+</div></body></html>

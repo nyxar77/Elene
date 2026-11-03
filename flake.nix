@@ -38,7 +38,7 @@
             export GOMODCACHE="$temp_dir/go-mod"
             export XDG_CACHE_HOME="$temp_dir/cache"
 
-            unformatted="$(find . -name '*.go' -type f -exec gofmt -l {} +)"
+            unformatted="$(find cmd internal -name '*.go' -type f -exec gofmt -l {} +)"
             if [ -n "$unformatted" ]; then
               printf '%s\n' "Go files need formatting:" >&2
               printf '%s\n' "$unformatted" >&2
@@ -50,10 +50,10 @@
             deadnix --fail flake.nix
             statix check flake.nix
             actionlint .github/workflows/*.yml
-            go vet ./...
-            staticcheck ./...
-            govulncheck ./...
-            go test -race -shuffle=on -count=1 -timeout=2m ./...
+            go vet ./cmd/... ./internal/...
+            staticcheck ./cmd/... ./internal/...
+            govulncheck ./cmd/... ./internal/...
+            go test -race -shuffle=on -count=1 -timeout=2m ./cmd/... ./internal/...
             go build -trimpath -o "$temp_dir/elene" ./cmd/elene
           '';
         };
@@ -66,8 +66,9 @@
     {
       formatter = forAllSystems (pkgs: pkgs.nixfmt);
 
-      packages = forAllSystems (pkgs: {
-        default = pkgs.buildGoModule {
+      packages = forAllSystems (pkgs: rec {
+        default = elene;
+        elene = pkgs.buildGoModule {
           pname = "elene";
           version = "0.0.0";
           src = pkgs.lib.cleanSource ./.;
@@ -103,7 +104,7 @@
                 cache_dir="$(mktemp -d)"
                 export GOCACHE="$cache_dir"
                 trap 'rm -rf "$cache_dir"' EXIT
-                go test -race -shuffle=on -count=1 -timeout=2m ./...
+                go test -race -shuffle=on -count=1 -timeout=2m ./cmd/... ./internal/...
               '';
             }
           }/bin/elene-test";
@@ -116,7 +117,7 @@
                 nixfmt
               ];
               text = ''
-                find . -name '*.go' -type f -print0 | xargs -0 -r gofmt -w
+                find cmd internal -name '*.go' -type f -print0 | xargs -0 -r gofmt -w
                 nixfmt flake.nix
               '';
             }
@@ -144,9 +145,9 @@
                 deadnix --fail flake.nix
                 statix check flake.nix
                 actionlint .github/workflows/*.yml
-                go vet ./...
-                staticcheck ./...
-                govulncheck ./...
+                go vet ./cmd/... ./internal/...
+                staticcheck ./cmd/... ./internal/...
+                govulncheck ./cmd/... ./internal/...
               '';
             }
           }/bin/elene-lint";
@@ -178,15 +179,15 @@
               export GOMODCACHE="$TMPDIR/go-mod"
               export XDG_CACHE_HOME="$TMPDIR/cache"
 
-              unformatted="$(find . -name '*.go' -type f -exec gofmt -l {} +)"
+              unformatted="$(find cmd internal -name '*.go' -type f -exec gofmt -l {} +)"
               test -z "$unformatted"
               nixfmt --check flake.nix
               deadnix --fail flake.nix
               statix check flake.nix
               actionlint .github/workflows/*.yml
-              go vet ./...
-              staticcheck ./...
-              go test -race -shuffle=on -count=1 -timeout=2m ./...
+              go vet ./cmd/... ./internal/...
+              staticcheck ./cmd/... ./internal/...
+              go test -race -shuffle=on -count=1 -timeout=2m ./cmd/... ./internal/...
               go build -trimpath -o "$TMPDIR/elene" ./cmd/elene
               runHook postBuild
             '';
@@ -212,11 +213,63 @@
             govulncheck
             gopls
             nodejs
+            bun
             nixfmt
             sqlite
             statix
           ];
         };
       });
+
+      overlays.default = _final: prev: {
+        elene = self.packages.${prev.stdenv.hostPlatform.system}.elene;
+      };
+
+      homeManagerModules = {
+        default = self.homeManagerModules.elene;
+        elene =
+          {
+            config,
+            lib,
+            pkgs,
+            ...
+          }:
+          let
+            cfg = config.programs.elene;
+          in
+          {
+            options.programs.elene = {
+              enable = lib.mkEnableOption "Elene local Android installer";
+              package = lib.mkOption {
+                type = lib.types.package;
+                default = self.packages.${pkgs.stdenv.hostPlatform.system}.elene;
+                defaultText = lib.literalExpression "self.packages.\${pkgs.stdenv.hostPlatform.system}.elene";
+                description = "The Elene package to install.";
+              };
+              service = {
+                enable = lib.mkEnableOption "Elene background dashboard daemon";
+              };
+            };
+
+            config = lib.mkIf cfg.enable {
+              home.packages = [ cfg.package ];
+
+              systemd.user.services.elene = lib.mkIf cfg.service.enable {
+                Unit = {
+                  Description = "Elene Local Android Station Daemon";
+                  After = [ "network.target" ];
+                };
+                Service = {
+                  ExecStart = "${cfg.package}/bin/elene serve";
+                  Restart = "on-failure";
+                  RestartSec = "5s";
+                };
+                Install = {
+                  WantedBy = [ "default.target" ];
+                };
+              };
+            };
+          };
+      };
     };
 }

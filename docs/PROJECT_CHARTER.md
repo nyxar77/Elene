@@ -52,5 +52,8 @@ Pull requests run the same gate in CI.
 
 ## Current scope
 
-The first increment is the ADB CLI prototype. Web UI, SQLite persistence,
-remote sources, and APK downloading remain outside this increment.
+The current increment adds an embedded, loopback-only web dashboard to the ADB
+CLI: device selection, local APK installation, transient job status, and saved
+appearance preferences. Its server-rendered interface works without JavaScript.
+SQLite persistence, remote sources, and APK downloading remain outside this
+increment.
