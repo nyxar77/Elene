@@ -1181,7 +1181,7 @@ func (s *Server) installCachedAPK(w http.ResponseWriter, r *http.Request) {
 	}
 
 	payload.SHA256 = strings.ToLower(strings.TrimSpace(payload.SHA256))
-	if !isValidSHA256(payload.SHA256) {
+	if strings.Contains(payload.SHA256, "..") || strings.ContainsAny(payload.SHA256, "/\\") || filepath.Base(payload.SHA256) != payload.SHA256 || !isValidSHA256(payload.SHA256) {
 		fail(w, http.StatusBadRequest, "Invalid sha256 parameter.")
 		return
 	}
@@ -1192,7 +1192,8 @@ func (s *Server) installCachedAPK(w http.ResponseWriter, r *http.Request) {
 
 	baseDir := filepath.Clean(filepath.Join(s.cacheDir, "apks"))
 	apkPath := filepath.Clean(filepath.Join(baseDir, payload.SHA256+".apk"))
-	if filepath.Dir(apkPath) != baseDir {
+	relPath, err := filepath.Rel(baseDir, apkPath)
+	if err != nil || strings.HasPrefix(relPath, "..") || filepath.Dir(apkPath) != baseDir {
 		fail(w, http.StatusBadRequest, "Invalid APK path traversal.")
 		return
 	}
@@ -1305,14 +1306,15 @@ func (s *Server) deleteCachedAPK(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sha256Hash = strings.ToLower(sha256Hash)
-	if !isValidSHA256(sha256Hash) {
+	if strings.Contains(sha256Hash, "..") || strings.ContainsAny(sha256Hash, "/\\") || filepath.Base(sha256Hash) != sha256Hash || !isValidSHA256(sha256Hash) {
 		fail(w, http.StatusBadRequest, "Invalid SHA-256 hash.")
 		return
 	}
 
 	baseDir := filepath.Clean(filepath.Join(s.cacheDir, "apks"))
 	apkPath := filepath.Clean(filepath.Join(baseDir, sha256Hash+".apk"))
-	if filepath.Dir(apkPath) != baseDir {
+	relPath, err := filepath.Rel(baseDir, apkPath)
+	if err != nil || strings.HasPrefix(relPath, "..") || filepath.Dir(apkPath) != baseDir {
 		fail(w, http.StatusBadRequest, "Invalid file path.")
 		return
 	}

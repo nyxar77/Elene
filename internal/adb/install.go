@@ -9,6 +9,9 @@ import (
 )
 
 func (c *Client) Install(ctx context.Context, serial, apkPath string) error {
+	if strings.Contains(apkPath, "..") {
+		return &Error{Code: ErrInvalidAPK, Operation: "validate APK", Detail: "path traversal sequences are not allowed"}
+	}
 	cleanPath := filepath.Clean(apkPath)
 	info, err := os.Stat(cleanPath)
 	if err != nil {
