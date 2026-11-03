@@ -1203,8 +1203,13 @@ func cleanAPKPath(value string) string {
 
 // Icon retrieves an application icon from the F-Droid repository, validating content-type.
 func (c *Catalog) Icon(ctx context.Context, name string) ([]byte, string, error) {
+	cleanName := path.Clean("/" + strings.TrimPrefix(name, "/"))
+	if !strings.HasPrefix(cleanName, "/") || strings.Contains(cleanName, "..") {
+		return nil, "", errors.New("invalid icon path")
+	}
+
 	c.mu.Lock()
-	allowed := c.icons[name]
+	allowed := c.icons[cleanName]
 	c.mu.Unlock()
 
 	if !allowed {
@@ -1214,8 +1219,24 @@ func (c *Catalog) Icon(ctx context.Context, name string) ([]byte, string, error)
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 
-	baseURL := strings.TrimRight(c.repoBaseURL, "/")
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+name, nil)
+	parsedBase, err := url.Parse(c.repoBaseURL)
+	if err != nil {
+		return nil, "", err
+	}
+
+	switch parsedBase.Hostname() {
+	case "f-droid.org", "apt.izzysoft.de", "127.0.0.1", "localhost":
+	default:
+		return nil, "", errors.New("untrusted repository host for icon retrieval")
+	}
+
+	targetURL := &url.URL{
+		Scheme: parsedBase.Scheme,
+		Host:   parsedBase.Host,
+		Path:   path.Join(parsedBase.Path, strings.TrimPrefix(cleanName, "/")),
+	}
+
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, targetURL.String(), nil)
 	if err != nil {
 		return nil, "", err
 	}

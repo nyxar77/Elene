@@ -297,6 +297,21 @@ func TestCleanIconPath(t *testing.T) {
 	}
 }
 
+func TestCatalogIconValidation(t *testing.T) {
+	c := New()
+	ctx := context.Background()
+
+	// Rejected when not registered
+	if _, _, err := c.Icon(ctx, "/unknown.png"); err == nil {
+		t.Fatal("expected error for unregistered icon")
+	}
+
+	// Rejected with path traversal
+	if _, _, err := c.Icon(ctx, "/../etc/passwd"); err == nil {
+		t.Fatal("expected error for path traversal icon")
+	}
+}
+
 func TestDiskCachingAndPruning(t *testing.T) {
 	tempDir := t.TempDir()
 	catDir := filepath.Join(tempDir, "catalog")

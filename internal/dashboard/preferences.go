@@ -18,7 +18,7 @@ func (s *StrictInt) UnmarshalJSON(b []byte) error {
 	if strings.Contains(str, ".") || strings.Contains(str, "e") || strings.Contains(str, "E") {
 		return fmt.Errorf("must be a whole integer, decimal numbers are not accepted: %s", str)
 	}
-	val, err := strconv.ParseInt(str, 10, 64)
+	val, err := strconv.Atoi(str)
 	if err != nil {
 		return fmt.Errorf("invalid integer: %s", str)
 	}

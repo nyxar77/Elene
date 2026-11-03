@@ -1156,6 +1156,19 @@ func (s *Server) listCachedAPKs(w http.ResponseWriter, r *http.Request) {
 	respond(w, http.StatusOK, results)
 }
 
+func isValidSHA256(hash string) bool {
+	if len(hash) != 64 {
+		return false
+	}
+	for i := 0; i < 64; i++ {
+		c := hash[i]
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return false
+		}
+	}
+	return true
+}
+
 func (s *Server) installCachedAPK(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 4096)
 	var payload struct {
@@ -1167,7 +1180,23 @@ func (s *Server) installCachedAPK(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	apkPath := filepath.Join(s.cacheDir, "apks", payload.SHA256+".apk")
+	payload.SHA256 = strings.ToLower(strings.TrimSpace(payload.SHA256))
+	if !isValidSHA256(payload.SHA256) {
+		fail(w, http.StatusBadRequest, "Invalid sha256 parameter.")
+		return
+	}
+	if strings.ContainsAny(payload.Serial, "\r\n\t") || len(payload.Serial) > 128 {
+		fail(w, http.StatusBadRequest, "Invalid serial parameter.")
+		return
+	}
+
+	baseDir := filepath.Clean(filepath.Join(s.cacheDir, "apks"))
+	apkPath := filepath.Clean(filepath.Join(baseDir, payload.SHA256+".apk"))
+	if filepath.Dir(apkPath) != baseDir {
+		fail(w, http.StatusBadRequest, "Invalid APK path traversal.")
+		return
+	}
+
 	if info, err := os.Stat(apkPath); err != nil || info.Size() == 0 {
 		fail(w, http.StatusNotFound, "Cached APK not found on disk.")
 		return
@@ -1275,12 +1304,18 @@ func (s *Server) deleteCachedAPK(w http.ResponseWriter, r *http.Request) {
 		sha256Hash = strings.TrimSpace(payload.SHA256)
 	}
 
-	if len(sha256Hash) != 64 {
+	sha256Hash = strings.ToLower(sha256Hash)
+	if !isValidSHA256(sha256Hash) {
 		fail(w, http.StatusBadRequest, "Invalid SHA-256 hash.")
 		return
 	}
 
-	apkPath := filepath.Join(s.cacheDir, "apks", sha256Hash+".apk")
+	baseDir := filepath.Clean(filepath.Join(s.cacheDir, "apks"))
+	apkPath := filepath.Clean(filepath.Join(baseDir, sha256Hash+".apk"))
+	if filepath.Dir(apkPath) != baseDir {
+		fail(w, http.StatusBadRequest, "Invalid file path.")
+		return
+	}
 	if err := os.Remove(apkPath); err != nil && !os.IsNotExist(err) {
 		fail(w, http.StatusInternalServerError, "Could not delete APK: "+err.Error())
 		return
@@ -1345,6 +1380,10 @@ func (s *Server) catalogPage(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) catalogIcon(w http.ResponseWriter, r *http.Request) {
 	iconPath := r.URL.Query().Get("path")
+	if iconPath == "" || len(iconPath) > 512 || !strings.HasPrefix(iconPath, "/") || strings.HasPrefix(iconPath, "//") || strings.Contains(iconPath, "\\") || strings.Contains(iconPath, "..") {
+		http.Error(w, "Invalid icon path.", http.StatusBadRequest)
+		return
+	}
 	targetCatalog := s.catalogForSource(r.URL.Query().Get("source"))
 
 	body, kind, err := targetCatalog.Icon(r.Context(), iconPath)
