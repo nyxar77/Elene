@@ -36,6 +36,16 @@ func run(ctx context.Context, args []string, getenv func(string) string, stdout,
 	}
 
 	switch command {
+	case "serve":
+		if len(args) != 0 {
+			usage(stderr)
+			return 2
+		}
+		if err := serve(ctx, adbPath, getenv("ELENE_PORT"), stdout); err != nil {
+			printError(stderr, err)
+			return 1
+		}
+		return 0
 	case "devices":
 		if len(args) != 0 {
 			usage(stderr)
@@ -110,5 +120,5 @@ func printError(output io.Writer, err error) {
 }
 
 func usage(output io.Writer) {
-	_, _ = fmt.Fprintln(output, "usage: elene [--adb PATH] devices | inspect-device SERIAL | install SERIAL PATH_TO_APK")
+	_, _ = fmt.Fprintln(output, "usage: elene [--adb PATH] serve | devices | inspect-device SERIAL | install SERIAL PATH_TO_APK")
 }

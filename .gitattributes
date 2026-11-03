@@ -1,0 +1,2 @@
+# Generated bundles retain upstream license comments verbatim.
+internal/dashboard/assets/dist/* -whitespace linguist-generated=true
