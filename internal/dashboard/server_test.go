@@ -50,7 +50,7 @@ func (f *fakeBackend) Install(ctx context.Context, serial, path string) error {
 func testServer(t *testing.T, b *fakeBackend) *Server {
 	t.Helper()
 	temp := t.TempDir()
-	s, err := New(t.Context(), b, filepath.Join(temp, "eden", "config.json"))
+	s, err := New(t.Context(), b, filepath.Join(temp, "elene", "config.json"))
 	if err != nil {
 		t.Fatal(err)
 	}

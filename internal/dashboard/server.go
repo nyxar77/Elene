@@ -243,6 +243,12 @@ func (s *Server) Handler(host string) http.Handler {
 	// Downloaded / cached APK management
 	mux.HandleFunc("GET /api/cached-apks", s.listCachedAPKs)
 	mux.HandleFunc("POST /api/cached-apks/install", s.installCachedAPK)
+	mux.HandleFunc("POST /cached-apks/install", func(w http.ResponseWriter, r *http.Request) {
+		s.installCachedAPKForm(w, r)
+	})
+	mux.HandleFunc("POST /cached-apks/delete", func(w http.ResponseWriter, r *http.Request) {
+		s.deleteCachedAPKForm(w, r)
+	})
 	mux.HandleFunc("DELETE /api/cached-apks", s.deleteCachedAPK)
 
 	// User preferences
@@ -257,6 +263,9 @@ func (s *Server) Handler(host string) http.Handler {
 	// Activity and operational logs
 	mux.HandleFunc("GET /api/logs", s.getLogs)
 	mux.HandleFunc("POST /api/logs/clear", s.clearLogs)
+	mux.HandleFunc("POST /logs/clear", func(w http.ResponseWriter, r *http.Request) {
+		s.clearLogsForm(w, r)
+	})
 
 	// Job tracking and cancellation
 	mux.HandleFunc("GET /api/jobs", func(w http.ResponseWriter, r *http.Request) {
@@ -306,7 +315,7 @@ func (s *Server) Handler(host string) http.Handler {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Content-Security-Policy",
-			"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+			"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; frame-src https://github.com/sponsors/nyxar77/; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
 
 		// Reject DNS rebinding and cross-origin access
 		if !isAllowedHost(r.Host, host) || !isAllowedOrigin(r.Header.Get("Origin"), host) || r.Header.Get("Sec-Fetch-Site") == "cross-site" {
@@ -330,7 +339,7 @@ func (s *Server) Handler(host string) http.Handler {
 
 		if basicInterface {
 			w.Header().Set("Content-Security-Policy",
-				"default-src 'self'; script-src 'none'; style-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+				"default-src 'self'; script-src 'none'; style-src 'self'; frame-src https://github.com/sponsors/nyxar77/; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
 		}
 
 		mux.ServeHTTP(w, r)
@@ -840,17 +849,43 @@ func fail(w http.ResponseWriter, status int, message string) {
 	respond(w, status, map[string]string{"error": message})
 }
 
-var pageTemplate = template.Must(template.ParseFS(assets, "assets/index.html"))
+var pageTemplate = template.Must(template.New("index.html").Funcs(template.FuncMap{
+	"lower": strings.ToLower,
+}).ParseFS(assets, "assets/index.html"))
+
+type CategoryChip struct {
+	ID    string
+	Label string
+}
+
+var popularCategories = []CategoryChip{
+	{ID: "", Label: "All Apps"},
+	{ID: "Internet", Label: "Internet"},
+	{ID: "Multimedia", Label: "Multimedia"},
+	{ID: "Security", Label: "Security & Privacy"},
+	{ID: "Development", Label: "Development"},
+	{ID: "System", Label: "System & Tools"},
+	{ID: "Navigation", Label: "Navigation & Maps"},
+	{ID: "Games", Label: "Games"},
+	{ID: "Reading", Label: "Reading & Docs"},
+	{ID: "Science & Education", Label: "Science & Education"},
+	{ID: "Graphics", Label: "Graphics & Photos"},
+	{ID: "Time", Label: "Productivity & Time"},
+}
 
 type pageData struct {
-	Catalog  *fdroid.Page
-	Query    string
-	Category string
+	Catalog    *fdroid.Page
+	Query      string
+	Category   string
+	Categories []CategoryChip
 
-	Path     string
-	Source   string
-	Packages []adb.Package
-	Selected string
+	Path       string
+	Source     string
+	Packages   []adb.Package
+	Selected   string
+	CachedAPKs []CachedAPK
+	Logs       []LogEntry
+	SubTab     string
 
 	Token       string
 	Preferences Preferences
@@ -876,15 +911,22 @@ func (s *Server) renderPage(w http.ResponseWriter, r *http.Request, status int, 
 	data := pageData{
 		Path:        r.URL.Path,
 		Selected:    r.URL.Query().Get("device"),
+		SubTab:      r.URL.Query().Get("tab"),
 		Token:       s.token,
 		Preferences: s.preferences,
 		Themes:      themes,
 		Accents:     accents,
+		Categories:  popularCategories,
 		Devices:     devices,
 		Jobs:        append([]Job(nil), s.jobs...),
+		Logs:        append([]LogEntry(nil), s.logs...),
 		Busy:        s.busy,
 	}
 	s.mu.Unlock()
+
+	if data.SubTab == "" {
+		data.SubTab = "tasks"
+	}
 
 	if data.Path == "/install" || data.Path == "/install-remote" {
 		data.Path = "/"
@@ -904,6 +946,11 @@ func (s *Server) renderPage(w http.ResponseWriter, r *http.Request, status int, 
 
 	data.Query = r.URL.Query().Get("q")
 	data.Category = r.URL.Query().Get("category")
+
+	// Pre-populate cached APKs for the Activity page or when needed
+	if data.Path == "/activity" {
+		data.CachedAPKs = s.getCachedAPKsList()
+	}
 
 	if data.Path == "/" && (data.Source == "fdroid" || data.Source == "aurora") {
 		// Only fetch catalog synchronously if the user is in basic (No-JS) interface mode.
@@ -1103,12 +1150,11 @@ func (s *Server) clearLogs(w http.ResponseWriter, r *http.Request) {
 	respond(w, http.StatusOK, map[string]bool{"cleared": true})
 }
 
-func (s *Server) listCachedAPKs(w http.ResponseWriter, r *http.Request) {
+func (s *Server) getCachedAPKsList() []CachedAPK {
 	apkDir := filepath.Join(s.cacheDir, "apks")
 	entries, err := os.ReadDir(apkDir)
 	if err != nil {
-		respond(w, http.StatusOK, []CachedAPK{})
-		return
+		return []CachedAPK{}
 	}
 
 	var results []CachedAPK
@@ -1153,7 +1199,11 @@ func (s *Server) listCachedAPKs(w http.ResponseWriter, r *http.Request) {
 		return strings.Compare(b.Downloaded, a.Downloaded)
 	})
 
-	respond(w, http.StatusOK, results)
+	return results
+}
+
+func (s *Server) listCachedAPKs(w http.ResponseWriter, r *http.Request) {
+	respond(w, http.StatusOK, s.getCachedAPKsList())
 }
 
 func isValidSHA256(hash string) bool {
@@ -1247,6 +1297,127 @@ func (s *Server) installCachedAPK(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respond(w, http.StatusAccepted, job)
+}
+
+func (s *Server) installCachedAPKForm(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 4096)
+	if err := r.ParseForm(); err != nil || r.PostForm.Get("token") != s.token {
+		s.renderPage(w, r, http.StatusForbidden, "This form expired. Please try again.")
+		return
+	}
+
+	sha256Hash := strings.ToLower(strings.TrimSpace(r.PostForm.Get("sha256")))
+	serial := strings.TrimSpace(r.PostForm.Get("serial"))
+
+	if sha256Hash == "" || serial == "" {
+		s.renderPage(w, r, http.StatusBadRequest, "Missing sha256 or device serial.")
+		return
+	}
+	if strings.Contains(sha256Hash, "..") || strings.ContainsAny(sha256Hash, "/\\") || filepath.Base(sha256Hash) != sha256Hash || !isValidSHA256(sha256Hash) {
+		s.renderPage(w, r, http.StatusBadRequest, "Invalid sha256 hash.")
+		return
+	}
+	if strings.ContainsAny(serial, "\r\n\t") || len(serial) > 128 {
+		s.renderPage(w, r, http.StatusBadRequest, "Invalid serial parameter.")
+		return
+	}
+
+	baseDir := filepath.Clean(filepath.Join(s.cacheDir, "apks"))
+	apkPath := filepath.Clean(filepath.Join(baseDir, sha256Hash+".apk"))
+	relPath, err := filepath.Rel(baseDir, apkPath)
+	if err != nil || strings.HasPrefix(relPath, "..") || filepath.Dir(apkPath) != baseDir {
+		s.renderPage(w, r, http.StatusBadRequest, "Invalid APK path traversal.")
+		return
+	}
+
+	if info, err := os.Stat(apkPath); err != nil || info.Size() == 0 {
+		s.renderPage(w, r, http.StatusNotFound, "Cached APK not found on disk.")
+		return
+	}
+
+	name := sha256Hash[:12] + ".apk"
+	var pkgID string
+	app, rel, found := s.catalog.LookupReleaseBySHA256(sha256Hash)
+	if !found {
+		app, rel, found = s.izzyCatalog.LookupReleaseBySHA256(sha256Hash)
+	}
+	if found {
+		name = fmt.Sprintf("%s (%s)", app.Name, rel.VersionName)
+		pkgID = app.ID
+	}
+
+	s.mu.Lock()
+	initialState := "installing"
+	shouldStartNow := true
+	if s.busy {
+		initialState = "queued"
+		shouldStartNow = false
+	} else {
+		s.busy = true
+	}
+
+	job := Job{
+		ID:        fmt.Sprintf("%s-%d", time.Now().UTC().Format("20060102T150405.000000000"), len(s.jobs)),
+		Name:      name,
+		PackageID: pkgID,
+		Serial:    serial,
+		State:     initialState,
+		Progress:  0,
+		Source:    "local-cache",
+		Created:   time.Now().UTC(),
+	}
+
+	if len(s.jobs) >= 30 {
+		s.jobs = s.jobs[:29]
+	}
+	s.jobs = append([]Job{job}, s.jobs...)
+	s.mu.Unlock()
+
+	if shouldStartNow {
+		s.workers.Add(1)
+		go s.runLocalInstallJob(job, apkPath)
+	}
+
+	http.Redirect(w, r, "/activity?device="+serial, http.StatusSeeOther)
+}
+
+func (s *Server) deleteCachedAPKForm(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 4096)
+	if err := r.ParseForm(); err != nil || r.PostForm.Get("token") != s.token {
+		s.renderPage(w, r, http.StatusForbidden, "This form expired. Please try again.")
+		return
+	}
+
+	sha256Hash := strings.ToLower(strings.TrimSpace(r.PostForm.Get("sha256")))
+	if sha256Hash == "" || strings.Contains(sha256Hash, "..") || strings.ContainsAny(sha256Hash, "/\\") || filepath.Base(sha256Hash) != sha256Hash || !isValidSHA256(sha256Hash) {
+		s.renderPage(w, r, http.StatusBadRequest, "Invalid SHA-256 hash.")
+		return
+	}
+
+	baseDir := filepath.Clean(filepath.Join(s.cacheDir, "apks"))
+	apkPath := filepath.Clean(filepath.Join(baseDir, sha256Hash+".apk"))
+	relPath, err := filepath.Rel(baseDir, apkPath)
+	if err != nil || strings.HasPrefix(relPath, "..") || filepath.Dir(apkPath) != baseDir {
+		s.renderPage(w, r, http.StatusBadRequest, "Invalid file path.")
+		return
+	}
+
+	_ = os.Remove(apkPath)
+	s.log("INFO", "Cache", "Deleted cached APK: "+sha256Hash[:12])
+	http.Redirect(w, r, "/activity", http.StatusSeeOther)
+}
+
+func (s *Server) clearLogsForm(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 4096)
+	if err := r.ParseForm(); err != nil || r.PostForm.Get("token") != s.token {
+		s.renderPage(w, r, http.StatusForbidden, "This form expired. Please try again.")
+		return
+	}
+
+	s.mu.Lock()
+	s.logs = []LogEntry{}
+	s.mu.Unlock()
+	http.Redirect(w, r, "/activity?tab=logs", http.StatusSeeOther)
 }
 
 func (s *Server) runLocalInstallJob(job Job, apkPath string) {

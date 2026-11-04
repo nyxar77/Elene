@@ -234,6 +234,24 @@
     </div>
   </section>
 
+  <!-- SECTION 5: SPONSOR -->
+  <section class="panel settings-panel">
+    <div class="settings-section-heading">
+      <h2>Support Elene</h2>
+      <p>Support continued development of this local Android workstation.</p>
+    </div>
+
+    <div class="settings-fields" style="display:flex;align-items:center;padding:12px 0;">
+      <iframe
+        src="https://github.com/sponsors/nyxar77/button"
+        title="Sponsor nyxar77"
+        height="32"
+        width="114"
+        style="border: 0; border-radius: 6px;"
+      ></iframe>
+    </div>
+  </section>
+
   <div class="settings-actions">
     <span class="muted small">
       {#if saveSuccess}
