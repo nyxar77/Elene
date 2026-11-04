@@ -70,8 +70,8 @@ work through server-rendered forms. Refresh manually to see changes. Disabling
 JavaScript in your browser also leaves these forms usable in enhanced mode.
 
 Preferences are shared by browsers accessing this daemon and saved atomically to
-`$XDG_CONFIG_HOME/eden/config.json`, defaulting to `~/.config/eden/config.json`.
-The `eden` directory name is intentional. The file is created on the first save.
+`$XDG_CONFIG_HOME/elene/config.json`, defaulting to `~/.config/elene/config.json`.
+The file is created on the first save.
 For example:
 
 ```json

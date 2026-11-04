@@ -42,7 +42,7 @@ func serve(ctx context.Context, adbPath, port string, stdout io.Writer) error {
 		_ = listener.Close()
 		return err
 	}
-	dashboardServer, err := dashboard.New(ctx, client, filepath.Join(configDir, "eden", "config.json"))
+	dashboardServer, err := dashboard.New(ctx, client, filepath.Join(configDir, "elene", "config.json"))
 	if err != nil {
 		_ = listener.Close()
 		return err
